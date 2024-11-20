@@ -18,7 +18,9 @@ use PHPStan\Doctrine\Driver\DriverDetector;
 use PHPStan\Php\PhpVersion;
 use PHPStan\ShouldNotHappenException;
 use PHPStan\TrinaryLogic;
+use PHPStan\Type\Accessory\AccessoryLowercaseStringType;
 use PHPStan\Type\Accessory\AccessoryNumericStringType;
+use PHPStan\Type\Accessory\AccessoryUppercaseStringType;
 use PHPStan\Type\ArrayType;
 use PHPStan\Type\BooleanType;
 use PHPStan\Type\Constant\ConstantBooleanType;
@@ -622,10 +624,10 @@ class QueryResultTypeWalker extends SqlWalker
 						$type = $this->createFloat(false);
 
 					} elseif ($castedExprType->isNumericString()->yes()) {
-						$type = $this->createNumericString(false);
+						$type = $this->createNumericString(false, $castedExprType->isLowercaseString()->yes(), $castedExprType->isUppercaseString()->yes());
 
 					} else {
-						$type = TypeCombinator::union($this->createFloat(false), $this->createNumericString(false));
+						$type = TypeCombinator::union($this->createFloat(false), $this->createNumericString(false, false, true));
 					}
 
 				} else {
@@ -738,7 +740,7 @@ class QueryResultTypeWalker extends SqlWalker
 
 		if ($this->driverType === DriverDetector::PDO_MYSQL || $this->driverType === DriverDetector::MYSQLI) {
 			if ($exprTypeNoNull->isInteger()->yes()) {
-				return $this->createNumericString($nullable);
+				return $this->createNumericString($nullable, true, true);
 			}
 
 			if ($exprTypeNoNull->isString()->yes() && !$exprTypeNoNull->isNumericString()->yes()) {
@@ -750,7 +752,7 @@ class QueryResultTypeWalker extends SqlWalker
 
 		if ($this->driverType === DriverDetector::PGSQL || $this->driverType === DriverDetector::PDO_PGSQL) {
 			if ($exprTypeNoNull->isInteger()->yes()) {
-				return $this->createNumericString($nullable);
+				return $this->createNumericString($nullable, true, true);
 			}
 
 			return $this->generalizeConstantType($exprType, $nullable);
@@ -786,7 +788,7 @@ class QueryResultTypeWalker extends SqlWalker
 
 		if ($this->driverType === DriverDetector::PDO_MYSQL || $this->driverType === DriverDetector::MYSQLI) {
 			if ($exprTypeNoNull->isInteger()->yes()) {
-				return $this->createNumericString($nullable);
+				return $this->createNumericString($nullable, true, true);
 			}
 
 			if ($exprTypeNoNull->isString()->yes() && !$exprTypeNoNull->isNumericString()->yes()) {
@@ -800,7 +802,7 @@ class QueryResultTypeWalker extends SqlWalker
 			if ($exprTypeNoNull->isInteger()->yes()) {
 				return TypeCombinator::union(
 					$this->createInteger($nullable),
-					$this->createNumericString($nullable),
+					$this->createNumericString($nullable, true, true),
 				);
 			}
 
@@ -837,19 +839,41 @@ class QueryResultTypeWalker extends SqlWalker
 		return $nullable ? TypeCombinator::addNull($integer) : $integer;
 	}
 
-	private function createNumericString(bool $nullable): Type
+	private function createNumericString(bool $nullable, bool $lowercase = false, bool $uppercase = false): Type
 	{
-		$numericString = TypeCombinator::intersect(
+		$types = [
 			new StringType(),
 			new AccessoryNumericStringType(),
-		);
+		];
+		if ($lowercase) {
+			$types[] = new AccessoryLowercaseStringType();
+		}
+		if ($uppercase) {
+			$types[] = new AccessoryUppercaseStringType();
+		}
+
+		$numericString = new IntersectionType($types);
 
 		return $nullable ? TypeCombinator::addNull($numericString) : $numericString;
 	}
 
-	private function createString(bool $nullable): Type
+	private function createString(bool $nullable, bool $lowercase = false, bool $uppercase = false): Type
 	{
-		$string = new StringType();
+		if ($lowercase || $uppercase) {
+			$types = [
+				new StringType(),
+			];
+			if ($lowercase) {
+				$types[] = new AccessoryLowercaseStringType();
+			}
+			if ($uppercase) {
+				$types[] = new AccessoryUppercaseStringType();
+			}
+			$string = new IntersectionType($types);
+		} else {
+			$string = new StringType();
+		}
+
 		return $nullable ? TypeCombinator::addNull($string) : $string;
 	}
 
@@ -895,10 +919,18 @@ class QueryResultTypeWalker extends SqlWalker
 			$result = $this->createFloat($containsNull);
 
 		} elseif ($typeNoNull->isNumericString()->yes()) {
-			$result = $this->createNumericString($containsNull);
+			$result = $this->createNumericString(
+				$containsNull,
+				$typeNoNull->isLowercaseString()->yes(),
+				$typeNoNull->isUppercaseString()->yes(),
+			);
 
 		} elseif ($typeNoNull->isString()->yes()) {
-			$result = $this->createString($containsNull);
+			$result = $this->createString(
+				$containsNull,
+				$typeNoNull->isLowercaseString()->yes(),
+				$typeNoNull->isUppercaseString()->yes(),
+			);
 
 		} else {
 			$result = $type;
@@ -1241,7 +1273,7 @@ class QueryResultTypeWalker extends SqlWalker
 
 						// e.g. 1.0 on sqlite results to '1' with pdo_stringify on PHP 8.1, but '1.0' on PHP 8.0 with no setup
 						// so we relax constant types and return just numeric-string to avoid those issues
-						$stringifiedFloat = $this->createNumericString(false);
+						$stringifiedFloat = $this->createNumericString(false, false, true);
 
 						if ($stringify->yes()) {
 							return $stringifiedFloat;
@@ -1773,7 +1805,11 @@ class QueryResultTypeWalker extends SqlWalker
 			}
 
 			if ($this->containsOnlyTypes($unionWithoutNull, [new IntegerType(), $this->createNumericString(false)])) {
-				return $this->createNumericString($nullable);
+				return $this->createNumericString(
+					$nullable,
+					$unionWithoutNull->toString()->isLowercaseString()->yes(),
+					$unionWithoutNull->toString()->isUppercaseString()->yes(),
+				);
 			}
 
 			if ($this->containsOnlyNumericTypes($unionWithoutNull)) {
@@ -1825,7 +1861,7 @@ class QueryResultTypeWalker extends SqlWalker
 
 		if ($unionWithoutNull->isInteger()->yes()) {
 			if ($this->driverType === DriverDetector::MYSQLI || $this->driverType === DriverDetector::PDO_MYSQL) {
-				return $this->createNumericString($nullable);
+				return $this->createNumericString($nullable, true, true);
 			} elseif ($this->driverType === DriverDetector::PDO_PGSQL || $this->driverType === DriverDetector::PGSQL || $this->driverType === DriverDetector::SQLITE3 || $this->driverType === DriverDetector::PDO_SQLITE) {
 				return $this->createInteger($nullable);
 			}
@@ -1853,7 +1889,11 @@ class QueryResultTypeWalker extends SqlWalker
 			}
 
 			if ($this->containsOnlyTypes($unionWithoutNull, [new IntegerType(), $this->createNumericString(false)])) {
-				return $this->createNumericString($nullable);
+				return $this->createNumericString(
+					$nullable,
+					$unionWithoutNull->toString()->isLowercaseString()->yes(),
+					$unionWithoutNull->toString()->isUppercaseString()->yes(),
+				);
 			}
 
 			if ($this->containsOnlyTypes($unionWithoutNull, [new FloatType(), $this->createNumericString(false)])) {

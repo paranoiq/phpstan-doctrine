@@ -4,10 +4,8 @@ namespace PHPStan\Type\Doctrine\Descriptors;
 
 use Doctrine\DBAL\Connection;
 use PHPStan\Doctrine\Driver\DriverDetector;
-use PHPStan\Type\Accessory\AccessoryNumericStringType;
 use PHPStan\Type\FloatType;
 use PHPStan\Type\IntegerType;
-use PHPStan\Type\IntersectionType;
 use PHPStan\Type\StringType;
 use PHPStan\Type\Type;
 use PHPStan\Type\TypeCombinator;
@@ -30,7 +28,7 @@ class DecimalType implements DoctrineTypeDescriptor, DoctrineTypeDriverAwareDesc
 
 	public function getWritableToPropertyType(): Type
 	{
-		return TypeCombinator::intersect(new StringType(), new AccessoryNumericStringType());
+		return (new FloatType())->toString();
 	}
 
 	public function getWritableToDatabaseType(): Type
@@ -57,10 +55,7 @@ class DecimalType implements DoctrineTypeDescriptor, DoctrineTypeDriverAwareDesc
 			DriverDetector::PGSQL,
 			DriverDetector::PDO_PGSQL,
 		], true)) {
-			return new IntersectionType([
-				new StringType(),
-				new AccessoryNumericStringType(),
-			]);
+			return (new FloatType())->toString();
 		}
 
 		// not yet supported driver, return the old implementation guess

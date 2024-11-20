@@ -13,6 +13,7 @@ use PHPStan\Testing\PHPStanTestCase;
 use PHPStan\Type\Accessory\AccessoryArrayListType;
 use PHPStan\Type\Accessory\AccessoryLowercaseStringType;
 use PHPStan\Type\Accessory\AccessoryNumericStringType;
+use PHPStan\Type\Accessory\AccessoryUppercaseStringType;
 use PHPStan\Type\ArrayType;
 use PHPStan\Type\Constant\ConstantArrayTypeBuilder;
 use PHPStan\Type\Constant\ConstantIntegerType;
@@ -139,7 +140,7 @@ final class QueryResultTypeWalkerHydrationModeTest extends PHPStanTestCase
 
 		yield 'getResult(object), fields' => [
 			self::list(self::constantArray([
-				[new ConstantStringType('decimalColumn'), self::numericString()],
+				[new ConstantStringType('decimalColumn'), self::numericString(false, true)],
 				[new ConstantStringType('floatColumn'), new FloatType()],
 			])),
 			'
@@ -175,7 +176,7 @@ final class QueryResultTypeWalkerHydrationModeTest extends PHPStanTestCase
 
 		yield 'toIterable(object), fields' => [
 			new IterableType(new IntegerType(), self::constantArray([
-				[new ConstantStringType('decimalColumn'), self::numericString()],
+				[new ConstantStringType('decimalColumn'), self::numericString(false, true)],
 				[new ConstantStringType('floatColumn'), new FloatType()],
 			])),
 			'
@@ -307,7 +308,7 @@ final class QueryResultTypeWalkerHydrationModeTest extends PHPStanTestCase
 		return TypeCombinator::intersect(new ArrayType(new IntegerType(), $values), new AccessoryArrayListType());
 	}
 
-	private static function numericString(bool $lowercase = false): Type
+	private static function numericString(bool $lowercase = false, bool $uppercase = false): Type
 	{
 		$types = [
 			new StringType(),
@@ -315,6 +316,9 @@ final class QueryResultTypeWalkerHydrationModeTest extends PHPStanTestCase
 		];
 		if ($lowercase) {
 			$types[] = new AccessoryLowercaseStringType();
+		}
+		if ($uppercase) {
+			$types[] = new AccessoryUppercaseStringType();
 		}
 
 		return new IntersectionType($types);
@@ -404,14 +408,14 @@ final class QueryResultTypeWalkerHydrationModeTest extends PHPStanTestCase
 	private static function floatOrStringified(): Type
 	{
 		return self::stringifies()
-			? self::numericString()
+			? self::numericString(false, true)
 			: new FloatType();
 	}
 
 	private static function floatOrIntOrStringified(): Type
 	{
 		return self::stringifies()
-			? self::numericString()
+			? self::numericString(false, true)
 			: TypeCombinator::union(new FloatType(), new IntegerType());
 	}
 
