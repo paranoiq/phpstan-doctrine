@@ -17,6 +17,7 @@ use PHPStan\Testing\PHPStanTestCase;
 use PHPStan\Type\Accessory\AccessoryArrayListType;
 use PHPStan\Type\Accessory\AccessoryLowercaseStringType;
 use PHPStan\Type\Accessory\AccessoryNumericStringType;
+use PHPStan\Type\Accessory\AccessoryUppercaseStringType;
 use PHPStan\Type\ArrayType;
 use PHPStan\Type\Constant\ConstantArrayTypeBuilder;
 use PHPStan\Type\Constant\ConstantFloatType;
@@ -377,7 +378,7 @@ final class QueryResultTypeWalkerTest extends PHPStanTestCase
 				]),
 				$this->constantArray([
 					[new ConstantIntegerType(0), new ObjectType(One::class)],
-					[new ConstantStringType('id'), $hasDbal4 ? new IntegerType() : $this->numericString()],
+					[new ConstantStringType('id'), $hasDbal4 ? new IntegerType() : $this->numericString(true, true)],
 					[new ConstantStringType('intColumn'), new IntegerType()],
 				])
 			),
@@ -399,7 +400,7 @@ final class QueryResultTypeWalkerTest extends PHPStanTestCase
 				]),
 				$this->constantArray([
 					[new ConstantIntegerType(0), new ObjectType(Many::class)],
-					[new ConstantStringType('id'), $hasDbal4 ? new IntegerType() : $this->numericString()],
+					[new ConstantStringType('id'), $hasDbal4 ? new IntegerType() : $this->numericString(true, true)],
 					[new ConstantStringType('intColumn'), new IntegerType()],
 				])
 			),
@@ -420,7 +421,7 @@ final class QueryResultTypeWalkerTest extends PHPStanTestCase
 				]),
 				$this->constantArray([
 					[new ConstantStringType('one'), new ObjectType(One::class)],
-					[new ConstantStringType('id'), $hasDbal4 ? new IntegerType() : $this->numericString()],
+					[new ConstantStringType('id'), $hasDbal4 ? new IntegerType() : $this->numericString(true, true)],
 					[new ConstantStringType('intColumn'), new IntegerType()],
 				])
 			),
@@ -530,7 +531,7 @@ final class QueryResultTypeWalkerTest extends PHPStanTestCase
 		yield 'just root entity and scalars' => [
 			$this->constantArray([
 				[new ConstantIntegerType(0), new ObjectType(One::class)],
-				[new ConstantStringType('id'), $hasDbal4 ? new IntegerType() : $this->numericString()],
+				[new ConstantStringType('id'), $hasDbal4 ? new IntegerType() : $this->numericString(true, true)],
 			]),
 			'
 				SELECT		o, o.id
@@ -788,7 +789,7 @@ final class QueryResultTypeWalkerTest extends PHPStanTestCase
 				[
 					new ConstantIntegerType(4),
 					$this->stringifies()
-						? $this->numericString()
+						? $this->numericString(false, true)
 						: TypeCombinator::union(
 							new IntegerType(),
 							new FloatType()
@@ -1474,8 +1475,8 @@ final class QueryResultTypeWalkerTest extends PHPStanTestCase
 		yield 'unary minus' => [
 			$this->constantArray([
 				[new ConstantStringType('minusInt'), $this->stringifies() ? new ConstantStringType('-1') : new ConstantIntegerType(-1)],
-				[new ConstantStringType('minusFloat'), $this->stringifies() ? $this->numericString() : new ConstantFloatType(-0.1)],
-				[new ConstantStringType('minusIntRange'), $this->stringifies() ? $this->numericString(true) : IntegerRangeType::fromInterval(null, 0)],
+				[new ConstantStringType('minusFloat'), $this->stringifies() ? $this->numericString(false, true) : new ConstantFloatType(-0.1)],
+				[new ConstantStringType('minusIntRange'), $this->stringifies() ? $this->numericString(true, true) : IntegerRangeType::fromInterval(null, 0)],
 			]),
 			'
 				SELECT		-1 as minusInt,
@@ -1516,7 +1517,7 @@ final class QueryResultTypeWalkerTest extends PHPStanTestCase
 				$this->constantArray([
 					[
 						new ConstantIntegerType(1),
-						new StringType(),
+						new IntersectionType([new StringType(), new AccessoryLowercaseStringType()]),
 					],
 					[
 						new ConstantIntegerType(2),
@@ -1524,7 +1525,7 @@ final class QueryResultTypeWalkerTest extends PHPStanTestCase
 					],
 					[
 						new ConstantIntegerType(3),
-						$this->numericString(),
+						$this->numericString(true, true),
 					],
 				]),
 				'
@@ -1623,7 +1624,7 @@ final class QueryResultTypeWalkerTest extends PHPStanTestCase
 		return $builder->getArray();
 	}
 
-	private function numericString(bool $lowercase = false): Type
+	private function numericString(bool $lowercase = false, bool $uppercase = false): Type
 	{
 		$types = [
 			new StringType(),
@@ -1631,6 +1632,9 @@ final class QueryResultTypeWalkerTest extends PHPStanTestCase
 		];
 		if ($lowercase) {
 			$types[] = new AccessoryLowercaseStringType();
+		}
+		if ($uppercase) {
+			$types[] = new AccessoryUppercaseStringType();
 		}
 
 		return new IntersectionType($types);
@@ -1679,21 +1683,21 @@ final class QueryResultTypeWalkerTest extends PHPStanTestCase
 	private function intOrStringified(): Type
 	{
 		return $this->stringifies()
-			? $this->numericString(true)
+			? $this->numericString(true, true)
 			: new IntegerType();
 	}
 
 	private function uintOrStringified(): Type
 	{
 		return $this->stringifies()
-			? $this->numericString(true)
+			? $this->numericString(true, true)
 			: $this->uint();
 	}
 
 	private function floatOrStringified(): Type
 	{
 		return $this->stringifies()
-			? $this->numericString()
+			? $this->numericString(false, true)
 			: new FloatType();
 	}
 
